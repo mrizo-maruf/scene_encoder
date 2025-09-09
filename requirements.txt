@@ -1,0 +1,6 @@
+torch>=1.9.0
+torch-geometric>=2.0.0
+numpy>=1.21.0
+pickle5  # For compatibility with older pickle formats
+tqdm>=4.60.0  # For progress bars in training
+scikit-learn>=1.0.0  # For additional utilities

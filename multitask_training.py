@@ -43,7 +43,7 @@ class MultiTaskMaskedTrainer:
         self.task_switch_probability = task_switch_probability
         
         # Loss functions as specified
-        self.cosine_loss = nn.CosineEmbeddingLoss()  # For CLIP similarity
+        self.mse_loss = nn.MSELoss()  # For bbox coordinate regression
         self.cross_entropy_loss = nn.CrossEntropyLoss()  # For relation prediction
         
         # AdamW optimizer with parameters from all three models (encoder + both heads)
@@ -59,13 +59,13 @@ class MultiTaskMaskedTrainer:
     def mask_nodes_task_a(self, data):
         """
         Task A: Masked Node Prediction
-        Select 15% of nodes, store their CLIP descriptors, replace with zeros.
+        Select 15% of nodes, store their bbox coordinates (center + extent), replace with zeros.
         
         Args:
             data: PyTorch Geometric Data object
             
         Returns:
-            tuple: (masked_data, masked_node_indices, original_clip_descriptors)
+            tuple: (masked_data, masked_node_indices, original_bbox_coordinates)
         """
         num_nodes = data.x.size(0)
         num_masked = max(1, int(num_nodes * self.node_mask_ratio))  # At least 1 node
@@ -73,15 +73,15 @@ class MultiTaskMaskedTrainer:
         # Random selection of nodes to mask
         masked_indices = torch.randperm(num_nodes)[:num_masked]
         
-        # Store original CLIP descriptors (positions 6-517, 512 dimensions)
-        original_clip = data.x[masked_indices, 6:518].clone()
+        # Store original bbox coordinates (positions 0-5: center[3] + extent[3])
+        original_bbox = data.x[masked_indices, 0:6].clone()
         
         # Create masked data
         masked_data = data.clone()
-        # Zero out CLIP descriptors for masked nodes
-        masked_data.x[masked_indices, 6:518] = 0
+        # Zero out bbox coordinates for masked nodes
+        masked_data.x[masked_indices, 0:6] = 0
         
-        return masked_data, masked_indices, original_clip
+        return masked_data, masked_indices, original_bbox
     
     def mask_edges_task_b(self, data):
         """
@@ -166,8 +166,8 @@ class MultiTaskMaskedTrainer:
             else:
                 single_data = batch
             
-            # Masking: Select subset of nodes, store original CLIP descriptors
-            masked_data, masked_indices, original_clips = self.mask_nodes_task_a(single_data)
+            # Masking: Select subset of nodes, store original bbox coordinates
+            masked_data, masked_indices, original_bbox = self.mask_nodes_task_a(single_data)
             
             if len(masked_indices) == 0:
                 continue
@@ -178,11 +178,10 @@ class MultiTaskMaskedTrainer:
             
             # Prediction: Pass embeddings of masked nodes through NodePredictionHead
             masked_node_embeddings = final_node_embeddings[masked_indices]
-            predicted_clips = self.model.node_prediction_head(masked_node_embeddings)
+            predicted_bbox = self.model.node_prediction_head(masked_node_embeddings)
             
-            # Loss: CosineEmbeddingLoss(predicted_clips, original_clips, target=ones)
-            target = torch.ones(original_clips.size(0), device=self.device)
-            loss = self.cosine_loss(predicted_clips, original_clips, target)
+            # Loss: MSELoss(predicted_bbox, original_bbox)
+            loss = self.mse_loss(predicted_bbox, original_bbox)
             
             total_loss += loss
             num_processed += 1
@@ -292,7 +291,7 @@ class MultiTaskMaskedTrainer:
         task_b_losses = []
         
         print(f"Starting multi-task masked training for {num_epochs} epochs")
-        print(f"Task A: Masked Node Prediction (CLIP reconstruction)")
+        print(f"Task A: Masked Node Prediction (bbox coordinate reconstruction)")
         print(f"Task B: Masked Edge Prediction (Relation prediction)")
         print(f"Task switch probability: {self.task_switch_probability}")
         print("=" * 60)
@@ -394,7 +393,7 @@ def main():
         dataset,
         node_embedding_dim=128,
         edge_embedding_dim=32,
-        clip_dim=512
+        bbox_dim=6
     )
     
     total_params = sum(p.numel() for p in model.parameters())

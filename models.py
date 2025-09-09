@@ -89,38 +89,38 @@ class GNNSceneEncoder(nn.Module):
 
 class NodePredictionHead(nn.Module):
     """
-    Prediction head for reconstructing CLIP descriptors from node embeddings.
+    Prediction head for reconstructing bbox coordinates (center + extent) from node embeddings.
     Used in masked node prediction task.
     """
-    def __init__(self, node_embedding_dim=128, clip_dim=512):
+    def __init__(self, node_embedding_dim=128, bbox_dim=6):
         """
         Initialize the node prediction head.
         
         Args:
             node_embedding_dim (int): Dimensionality of input node embeddings
-            clip_dim (int): Dimensionality of CLIP descriptors to predict
+            bbox_dim (int): Dimensionality of bbox coordinates to predict (6: center[3] + extent[3])
         """
         super(NodePredictionHead, self).__init__()
         
         self.mlp = nn.Sequential(
-            nn.Linear(node_embedding_dim, 256),
+            nn.Linear(node_embedding_dim, 128),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(256, 512),
+            nn.Linear(128, 64),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(512, clip_dim)
+            nn.Linear(64, bbox_dim)
         )
     
     def forward(self, node_embeddings):
         """
-        Predict CLIP descriptors from node embeddings.
+        Predict bbox coordinates from node embeddings.
         
         Args:
             node_embeddings (torch.Tensor): Node embeddings [num_nodes, node_embedding_dim]
             
         Returns:
-            torch.Tensor: Predicted CLIP descriptors [num_nodes, clip_dim]
+            torch.Tensor: Predicted bbox coordinates [num_nodes, bbox_dim]
         """
         return self.mlp(node_embeddings)
 
@@ -218,7 +218,7 @@ class GNNSceneEmbeddingNetwork_Training(nn.Module):
                  num_relations=26,
                  node_embedding_dim=128, 
                  edge_embedding_dim=32,
-                 clip_dim=512):
+                 bbox_dim=6):
         """
         Initialize the training model with encoder and prediction heads.
         
@@ -227,7 +227,7 @@ class GNNSceneEmbeddingNetwork_Training(nn.Module):
             num_relations (int): Number of unique relation types
             node_embedding_dim (int): Dimensionality of node embeddings
             edge_embedding_dim (int): Dimensionality of edge embeddings
-            clip_dim (int): Dimensionality of CLIP descriptors
+            bbox_dim (int): Dimensionality of bbox coordinates (6: center[3] + extent[3])
         """
         super(GNNSceneEmbeddingNetwork_Training, self).__init__()
         
@@ -242,7 +242,7 @@ class GNNSceneEmbeddingNetwork_Training(nn.Module):
         # Prediction heads
         self.node_prediction_head = NodePredictionHead(
             node_embedding_dim=node_embedding_dim,
-            clip_dim=clip_dim
+            bbox_dim=bbox_dim
         )
         
         self.edge_prediction_head = EdgePredictionHead(
@@ -267,7 +267,7 @@ class GNNSceneEmbeddingNetwork_Training(nn.Module):
         outputs = {'node_embeddings': node_embeddings}
         
         if return_predictions:
-            # Node predictions (CLIP reconstruction)
+            # Node predictions (bbox reconstruction)
             node_predictions = self.node_prediction_head(node_embeddings)
             outputs['node_predictions'] = node_predictions
             
@@ -377,7 +377,7 @@ def create_training_model(dataset, **model_kwargs):
         'num_relations': dataset.get_num_relations(),
         'node_embedding_dim': 128,
         'edge_embedding_dim': 32,
-        'clip_dim': 512
+        'bbox_dim': 6
     }
     defaults.update(model_kwargs)
     

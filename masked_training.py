@@ -1,7 +1,15 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
+impor        # Store original bbox coordinates (positions 0-5: center[3] + extent[3])
+        original_bbox = data.x[:, 0:6].clone()
+        
+        # Create masked data
+        masked_data = data.clone()
+        # Zero out bbox coordinates for masked nodes
+        masked_data.x[mask, 0:6] = 0
+        
+        return masked_data, mask, original_bboxs np
 from torch_geometric.loader import DataLoader
 from tqdm import tqdm
 import random
@@ -50,35 +58,35 @@ class MaskedTrainer:
         
     def mask_nodes(self, data):
         """
-        Mask random nodes by replacing their CLIP descriptors with zeros.
+        Mask random nodes by replacing their bbox coordinates with zeros.
         
         Args:
             data: PyTorch Geometric Data object
             
         Returns:
-            tuple: (masked_data, mask, original_clip_features)
+            tuple: (masked_data, mask, original_bbox_features)
         """
         num_nodes = data.x.size(0)
         num_masked = int(num_nodes * self.node_mask_ratio)
         
         if num_masked == 0:
             # No masking for very small graphs
-            return data, torch.zeros(num_nodes, dtype=torch.bool), data.x[:, 6:518]
+            return data, torch.zeros(num_nodes, dtype=torch.bool), data.x[:, 0:6]
         
         # Random selection of nodes to mask
         masked_indices = torch.randperm(num_nodes)[:num_masked]
         mask = torch.zeros(num_nodes, dtype=torch.bool)
         mask[masked_indices] = True
         
-        # Store original CLIP features (positions 6-517, 512 dimensions)
-        original_clip = data.x[:, 6:518].clone()
+        # Store original bbox coordinates (positions 0-5: center[3] + extent[3])
+        original_bbox = data.x[:, 0:6].clone()
         
         # Create masked data
         masked_data = data.clone()
-        # Zero out CLIP descriptors for masked nodes
-        masked_data.x[masked_indices, 6:518] = 0
+        # Zero out bbox coordinates for masked nodes
+        masked_data.x[masked_indices, 0:6] = 0
         
-        return masked_data, mask, original_clip
+        return masked_data, mask, original_bbox
     
     def mask_edges(self, data):
         """
@@ -201,7 +209,7 @@ class MaskedTrainer:
                 single_data = batch
             
             # Node masking
-            masked_data_nodes, node_mask, original_clip = self.mask_nodes(single_data)
+            masked_data_nodes, node_mask, original_bbox = self.mask_nodes(single_data)
             
             if node_mask.any():
                 # Forward pass on node-masked data
@@ -210,10 +218,10 @@ class MaskedTrainer:
                 
                 # Node reconstruction loss (only on masked nodes)
                 masked_node_predictions = node_predictions[node_mask]
-                masked_original_clip = original_clip[node_mask]
+                masked_original_bbox = original_bbox[node_mask]
                 
                 if masked_node_predictions.size(0) > 0:
-                    node_loss = self.node_criterion(masked_node_predictions, masked_original_clip)
+                    node_loss = self.node_criterion(masked_node_predictions, masked_original_bbox)
                     total_node_loss += node_loss
             
             # Edge masking

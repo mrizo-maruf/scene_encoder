@@ -70,7 +70,7 @@ def step2_pretrain_encoder(dataset: SceneGraphDataset,
         dataset,
         node_embedding_dim=128,
         edge_embedding_dim=32,
-        clip_dim=512
+        bbox_dim=6
     )
     
     total_params = sum(p.numel() for p in model.parameters())
@@ -86,7 +86,7 @@ def step2_pretrain_encoder(dataset: SceneGraphDataset,
     )
     
     print(f"Starting masked pre-training...")
-    print(f"  - Task A: Masked Node Prediction (CLIP reconstruction)")
+    print(f"  - Task A: Masked Node Prediction (bbox coordinate reconstruction)")
     print(f"  - Task B: Masked Edge Prediction (Relation prediction)")
     print(f"  - {epochs} epochs with task switching")
     

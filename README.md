@@ -17,7 +17,7 @@ The architecture consists of three main components designed for flexible trainin
 - **Output**: Node embeddings [num_nodes, 128]
 
 #### 2. **Prediction Heads** (Training Only)
-- **NodePredictionHead**: MLP(128 → 256 → 512 → 512) for CLIP reconstruction
+- **NodePredictionHead**: MLP(128 → 128 → 64 → 6) for bbox coordinate reconstruction
 - **EdgePredictionHead**: MLP(256 → 128 → 64 → num_relations) for relation prediction
 
 #### 3. **SceneEmbeddingHead** (Inference Only)  
@@ -31,7 +31,7 @@ The architecture consists of three main components designed for flexible trainin
 # Training Model (for masked pre-training)
 GNNSceneEmbeddingNetwork_Training:
   ├── GNNSceneEncoder (shared)
-  ├── NodePredictionHead (CLIP reconstruction)
+  ├── NodePredictionHead (bbox reconstruction)
   └── EdgePredictionHead (relation prediction)
 
 # Inference Model (for downstream tasks)
@@ -47,9 +47,9 @@ GNNSceneEmbeddingNetwork_Inference:
 The model uses a **multi-task masked training** approach that alternates between two self-supervised tasks:
 
 #### Task A: Masked Node Prediction (50% probability)
-1. **Masking**: Randomly select 15% of nodes and zero out their CLIP descriptors
-2. **Objective**: Reconstruct original CLIP features from corrupted node embeddings
-3. **Loss**: CosineEmbeddingLoss between predicted and original CLIP features
+1. **Masking**: Randomly select 15% of nodes and zero out their bbox coordinates (center + extent)
+2. **Objective**: Reconstruct original bbox coordinates from corrupted node embeddings
+3. **Loss**: MSELoss between predicted and original bbox coordinates
 
 #### Task B: Masked Edge Prediction (50% probability)  
 1. **Masking**: Randomly select 15% of edges, store their relation labels
@@ -62,10 +62,10 @@ The model uses a **multi-task masked training** approach that alternates between
 # Multi-task training loop
 for each batch:
     if random() < 0.5:  # Task A
-        masked_data, mask, original_clips = mask_nodes(data, ratio=0.15)
+        masked_data, mask, original_bbox = mask_nodes(data, ratio=0.15)
         node_embeddings = encoder(masked_data)
-        predicted_clips = node_head(node_embeddings[mask])
-        loss = CosineEmbeddingLoss(predicted_clips, original_clips)
+        predicted_bbox = node_head(node_embeddings[mask])
+        loss = MSELoss(predicted_bbox, original_bbox)
     else:  # Task B
         masked_edges, relations = mask_edges(data, ratio=0.15)
         node_embeddings = encoder(data)
@@ -212,7 +212,7 @@ scene_embedding = inference_model(data)  # [1, 32] ready for classification/retr
 ## 📊 Model Performance
 
 The trained encoder learns to:
-- ✅ Reconstruct CLIP features from corrupted inputs (node-level understanding)
+- ✅ Reconstruct bbox coordinates from corrupted inputs (spatial understanding)
 - ✅ Predict spatial relations from node pairs (edge-level reasoning)  
 - ✅ Generate informative scene embeddings (scene-level representation)
 
